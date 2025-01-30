@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from models import User
-from dependencies import get_db, get_current_user, get_current_user_from_cookie
+from dependencies import get_db, get_current_user, get_current_user_from_cookie, get_current_admin_user
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -48,26 +48,40 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+@router.get("/register/", response_class=HTMLResponse)
+def register_form(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
 @router.post("/register/")
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    hashed_password = get_password_hash(user.password)
-    new_user = User(username=user.username, hashed_password=hashed_password, role=user.role)
+def register(username: str = Form(...), password: str = Form(...), role: str = Form(...), db: Session = Depends(get_db)):
+    hashed_password = get_password_hash(password)
+    new_user = User(username=username, hashed_password=hashed_password, role=role)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"msg": "User registered successfully"}
+    return RedirectResponse(url="/", status_code=303)
 
 @router.post("/login/")
-def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == username).first()
     if db_user is None or not verify_password(password, db_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
+        return templates.TemplateResponse("error.html", {"request": request, "message": "Incorrect username or password"})
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": db_user.username}, expires_delta=access_token_expires)
-    response = RedirectResponse(url="/auth/success/", status_code=303)
+    if db_user.role == "admin":
+        response = RedirectResponse(url="/auth/admin/", status_code=303)
+    else:
+        response = RedirectResponse(url="/auth/success/", status_code=303)
     response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True)
     return response
 
 @router.get("/success/", response_class=HTMLResponse)
 def success(request: Request, current_user: User = Depends(get_current_user_from_cookie)):
-    return templates.TemplateResponse("success.html", {"request": request, "username": current_user.username})
+    return templates.TemplateResponse("success.html", {"request": request, "username": current_user.username, "role": current_user.role})
+
+@router.get("/admin/", response_class=HTMLResponse)
+def admin_dashboard(request: Request, current_user: User = Depends(get_current_user_from_cookie), db: Session = Depends(get_db)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to access this resource")
+    users = db.query(User).all()
+    return templates.TemplateResponse("admin.html", {"request": request, "username": current_user.username, "users": users})
