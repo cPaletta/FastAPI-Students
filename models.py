@@ -15,3 +15,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     role = Column(String)
     hashed_password = Column(String)
+    email = Column(String, unique=True, index=True)
+    name = Column(String)  
+    surname = Column(String)  
+    phone = Column(String)  

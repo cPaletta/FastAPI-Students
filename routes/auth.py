@@ -23,6 +23,10 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=6)
     role: str = Field(..., pattern="^(teacher|admin|student)$")
+    email: str = Field(..., pattern=r'^\S+@\S+\.\S+$') 
+    name: str = Field(..., min_length=1, max_length=100)
+    surname: str = Field(..., min_length=1, max_length=100)
+    phone: str = Field(..., min_length=1, max_length=100, pattern=r'^\d+$')
 
 class Token(BaseModel):
     access_token: str
@@ -53,9 +57,9 @@ def register_form(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 @router.post("/register/")
-def register(username: str = Form(...), password: str = Form(...), role: str = Form(...), db: Session = Depends(get_db)):
+def register(username: str = Form(...), password: str = Form(...), role: str = Form(...), email: str = Form(...), phone: str = Form(...), surname: str = Form(...), name: str = Form(...), db: Session = Depends(get_db)):
     hashed_password = get_password_hash(password)
-    new_user = User(username=username, hashed_password=hashed_password, role=role)
+    new_user = User(username=username, hashed_password=hashed_password, role=role, email=email, name=name, surname=surname, phone=phone)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -77,7 +81,15 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 
 @router.get("/success/", response_class=HTMLResponse)
 def success(request: Request, current_user: User = Depends(get_current_user_from_cookie)):
-    return templates.TemplateResponse("success.html", {"request": request, "username": current_user.username, "role": current_user.role})
+    return templates.TemplateResponse("success.html", {
+        "request": request,
+        "username": current_user.username,
+        "role": current_user.role,
+        "email": current_user.email,
+        "name": current_user.name,
+        "surname": current_user.surname,
+        "phone": current_user.phone
+    })
 
 @router.get("/admin/", response_class=HTMLResponse)
 def admin_dashboard(request: Request, current_user: User = Depends(get_current_user_from_cookie), db: Session = Depends(get_db)):
